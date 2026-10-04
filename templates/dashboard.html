@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard des avis</title>
+<style>
+:root {
+  color-scheme: light;
+}
+body.viz-root {
+  --page: #f9f9f7;
+  --surface-1: #fcfcfb;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --baseline: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.10);
+  --series-1: #2a78d6;
+  --critical: #d03b3b;
+
+  margin: 0;
+  background: var(--page);
+  color: var(--text-primary);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .viz-root {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface-1: #1a1a19;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --baseline: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --series-1: #3987e5;
+    --critical: #e66767;
+  }
+}
+:root[data-theme="dark"] .viz-root {
+  color-scheme: dark;
+  --page: #0d0d0d;
+  --surface-1: #1a1a19;
+  --text-primary: #ffffff;
+  --text-secondary: #c3c2b7;
+  --muted: #898781;
+  --grid: #2c2c2a;
+  --baseline: #383835;
+  --border: rgba(255, 255, 255, 0.10);
+  --series-1: #3987e5;
+  --critical: #e66767;
+}
+
+.wrap {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 32px 24px 48px;
+}
+h1 {
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0 0 24px;
+}
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px 24px;
+}
+.card.wide {
+  grid-column: 1 / -1;
+}
+.card h2 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 0 0 12px;
+}
+.hero-value {
+  font-size: 56px;
+  font-weight: 600;
+  line-height: 1;
+  margin: 8px 0 4px;
+}
+.hero-sub {
+  color: var(--text-secondary);
+  font-size: 14px;
+  margin: 0;
+}
+.stat-value {
+  font-size: 28px;
+  font-weight: 600;
+  margin: 8px 0 0;
+}
+.chart-box {
+  position: relative;
+  height: 260px;
+}
+.empty {
+  color: var(--muted);
+  font-size: 14px;
+  margin: 0;
+}
+.status {
+  color: var(--critical);
+  font-size: 14px;
+  margin: 16px 0 0;
+}
+details {
+  margin-top: 24px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+summary {
+  cursor: pointer;
+}
+table {
+  border-collapse: collapse;
+  margin-top: 12px;
+  font-variant-numeric: tabular-nums;
+}
+th, td {
+  text-align: left;
+  padding: 6px 16px 6px 0;
+  border-bottom: 1px solid var(--grid);
+}
+
+@media screen and (max-width: 600px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+  .wrap {
+    padding: 24px 16px 40px;
+  }
+}
+</style>
+</head>
+<body class="viz-root">
+<main class="wrap">
+  <h1>Avis des visiteurs</h1>
+
+  <div class="grid">
+    <section class="card">
+      <h2>Note moyenne</h2>
+      <p class="hero-value" id="average">—</p>
+      <p class="hero-sub">sur 5</p>
+    </section>
+
+    <section class="card">
+      <h2>Nombre d'avis</h2>
+      <p class="stat-value" id="count">—</p>
+    </section>
+
+    <section class="card">
+      <h2>Répartition des notes</h2>
+      <div class="chart-box"><canvas id="distribution-chart" aria-label="Répartition des notes"></canvas></div>
+      <p class="empty" id="distribution-empty" hidden>Aucun avis pour le moment.</p>
+    </section>
+
+    <section class="card">
+      <h2>Avis par mois</h2>
+      <div class="chart-box"><canvas id="timeline-chart" aria-label="Nombre d'avis par mois"></canvas></div>
+      <p class="empty" id="timeline-empty" hidden>Aucun avis pour le moment.</p>
+    </section>
+  </div>
+
+  <p class="status" id="status" role="status"></p>
+
+  <details>
+    <summary>Voir les données</summary>
+    <table>
+      <thead><tr><th>Note</th><th>Avis</th></tr></thead>
+      <tbody id="distribution-table"></tbody>
+    </table>
+    <table>
+      <thead><tr><th>Mois</th><th>Avis</th></tr></thead>
+      <tbody id="timeline-table"></tbody>
+    </table>
+  </details>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+const NOTES = ["1", "2", "3", "4", "5"];
+const mediaDark = window.matchMedia("(prefers-color-scheme: dark)");
+let charts = [];
+let lastData = null;
+
+function tokens() {
+  const style = getComputedStyle(document.body);
+  const read = (name) => style.getPropertyValue(name).trim();
+  return {
+    series: read("--series-1"),
+    surface: read("--surface-1"),
+    text: read("--text-primary"),
+    secondary: read("--text-secondary"),
+    muted: read("--muted"),
+    grid: read("--grid"),
+    baseline: read("--baseline")
+  };
+}
+
+function withAlpha(hex, alpha) {
+  const n = parseInt(hex.replace("#", ""), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
+
+function formatMonth(iso) {
+  const [year, month] = iso.split("-").map(Number);
+  return new Date(year, month - 1).toLocaleDateString("fr-FR", { month: "short", year: "numeric" });
+}
+
+const valueLabels = {
+  id: "valueLabels",
+  afterDatasetsDraw(chart, _args, options) {
+    const { ctx } = chart;
+    const data = chart.data.datasets[0].data;
+    ctx.save();
+    ctx.font = "600 13px system-ui, -apple-system, 'Segoe UI', sans-serif";
+    ctx.fillStyle = options.color;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "bottom";
+    chart.getDatasetMeta(0).data.forEach((bar, i) => {
+      ctx.fillText(String(data[i]), bar.x, bar.y - 6);
+    });
+    ctx.restore();
+  }
+};
+
+function baseOptions(t) {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: "index", intersect: false },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: t.surface,
+        titleColor: t.text,
+        bodyColor: t.secondary,
+        borderColor: t.grid,
+        borderWidth: 1,
+        padding: 10,
+        displayColors: false
+      }
+    },
+    scales: {
+      x: {
+        grid: { display: false },
+        border: { color: t.baseline },
+        ticks: { color: t.muted }
+      },
+      y: {
+        beginAtZero: true,
+        grid: { color: t.grid, lineWidth: 1 },
+        border: { display: false },
+        ticks: { color: t.muted, precision: 0 }
+      }
+    }
+  };
+}
+
+function destroyCharts() {
+  charts.forEach((chart) => chart.destroy());
+  charts = [];
+}
+
+function render(data) {
+  lastData = data;
+  const t = tokens();
+  destroyCharts();
+
+  document.getElementById("average").textContent =
+    data.average === null ? "—" : data.average.toFixed(2).replace(".", ",");
+  document.getElementById("count").textContent = data.count;
+
+  const distributionValues = NOTES.map((note) => data.distribution[note]);
+  const timelineLabels = data.timeline.map((point) => formatMonth(point.month));
+  const timelineValues = data.timeline.map((point) => point.count);
+
+  document.getElementById("distribution-empty").hidden = data.count !== 0;
+  document.getElementById("timeline-empty").hidden = data.timeline.length !== 0;
+
+  const distributionOptions = baseOptions(t);
+  distributionOptions.layout = { padding: { top: 18 } };
+  distributionOptions.plugins.valueLabels = { color: t.text };
+  distributionOptions.scales.x.title = { display: true, text: "Note (sur 5)", color: t.muted };
+
+  charts.push(new Chart(document.getElementById("distribution-chart"), {
+    type: "bar",
+    data: {
+      labels: NOTES.map((note) => `${note} ★`),
+      datasets: [{
+        data: distributionValues,
+        backgroundColor: t.series,
+        maxBarThickness: 24,
+        borderSkipped: "bottom",
+        borderRadius: { topLeft: 4, topRight: 4 }
+      }]
+    },
+    options: distributionOptions,
+    plugins: [valueLabels]
+  }));
+
+  const timelineOptions = baseOptions(t);
+  timelineOptions.plugins.tooltip.callbacks = {
+    label: (ctx) => `${ctx.parsed.y} avis`
+  };
+
+  charts.push(new Chart(document.getElementById("timeline-chart"), {
+    type: "line",
+    data: {
+      labels: timelineLabels,
+      datasets: [{
+        data: timelineValues,
+        borderColor: t.series,
+        backgroundColor: withAlpha(t.series, 0.1),
+        fill: true,
+        borderWidth: 2,
+        tension: 0,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        pointBackgroundColor: t.series,
+        pointBorderColor: t.surface,
+        pointBorderWidth: 2,
+        pointHitRadius: 12
+      }]
+    },
+    options: timelineOptions
+  }));
+
+  document.getElementById("distribution-table").replaceChildren(...NOTES.map((note) => {
+    const row = document.createElement("tr");
+    row.innerHTML = `<td>${note} ★</td><td>${data.distribution[note]}</td>`;
+    return row;
+  }));
+  document.getElementById("timeline-table").replaceChildren(...data.timeline.map((point) => {
+    const row = document.createElement("tr");
+    row.innerHTML = `<td>${formatMonth(point.month)}</td><td>${point.count}</td>`;
+    return row;
+  }));
+}
+
+async function load() {
+  const status = document.getElementById("status");
+  try {
+    const response = await fetch("/api/reviews/stats");
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    status.textContent = "";
+    render(await response.json());
+  } catch (error) {
+    status.textContent = "Impossible de charger les statistiques.";
+  }
+}
+
+mediaDark.addEventListener("change", () => {
+  if (lastData) render(lastData);
+});
+
+load();
+</script>
+</body>
+</html>
