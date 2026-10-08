@@ -40,11 +40,10 @@ pip install -r requirements.txt
 copy .env.example .env   # puis renseigner les valeurs
 ```
 
-Créer la base et la table :
+Créer la table (sur une base PostgreSQL déjà existante, locale ou distante) :
 
 ```bash
-psql -U postgres -c "CREATE DATABASE feedback;"
-psql -U postgres -d feedback -f db/schema.sql
+python db/init_db.py
 ```
 
 Démarrer le serveur :
@@ -58,8 +57,17 @@ python -m Controllers.review_controller
 | Variable | Rôle |
 |---|---|
 | `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | Connexion PostgreSQL |
+| `DB_SSLMODE` | `prefer` par défaut (fonctionne en local et sur Render) ; mettre `require` si le serveur l'exige |
 | `DASHBOARD_USER`, `DASHBOARD_PASSWORD` | Identifiants Basic Auth du dashboard et des stats |
 
 ## Déploiement (Render)
 
-Le `Procfile` lance `gunicorn Controllers.review_controller:app`. Sur Render : un Web Service relié à ce repo et une base PostgreSQL, les variables ci-dessus renseignées, et `db/schema.sql` exécuté une fois sur la base.
+Le `Procfile` lance `gunicorn Controllers.review_controller:app`.
+
+Render limite à une seule base PostgreSQL gratuite par compte : ce projet est pensé pour **réutiliser une base PostgreSQL Render existante** (ici celle de Banking API) plutôt que d'en créer une nouvelle. La table `reviews` est isolée des tables existantes (`db/schema.sql` ne fait qu'un `CREATE TABLE IF NOT EXISTS`).
+
+1. Sur Render, ouvrir la base PostgreSQL existante → onglet **Connect** → noter les champs *Hostname*, *Database*, *Username*, *Password* :
+   - **External** (host en `*.render.com`) pour s'y connecter depuis sa machine.
+   - **Internal** (host en `*-a` interne, sans port public) pour la connexion depuis un service Render vers un autre.
+2. En local, avec les valeurs **externes** dans `.env` : `python db/init_db.py` crée la table `reviews` sans toucher aux tables de Banking API.
+3. Créer le Web Service Render relié à ce repo, avec les variables `DB_*` renseignées avec les valeurs **internes** (plus rapide, reste sur le réseau Render) et `DASHBOARD_USER`/`DASHBOARD_PASSWORD` au choix.

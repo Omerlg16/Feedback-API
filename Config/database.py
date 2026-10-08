@@ -9,6 +9,7 @@ def get_connection():
         user=os.environ.get("DB_USER"),
         host=os.environ.get("DB_HOST"),
         dbname=os.environ.get("DB_NAME"),
-        password=os.environ.get("DB_PASSWORD")
+        password=os.environ.get("DB_PASSWORD"),
+        sslmode=os.environ.get("DB_SSLMODE", "prefer")
     )
     return connection
